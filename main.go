@@ -16,34 +16,23 @@ var (
 	googleOauthConfig   *oauth2.Config
 	facebookOauthConfig *oauth2.Config
 	lineOauthConfig     *oauth2.Config
+	WEB_REDIRECT_URL    string
+	SERVER_URL          string
+	SERVER_PORT         string
 )
 
-func getCurrentPublicIP() (string, error) {
-	resp, err := http.Get("https://api.ipify.org?format=text")
-	if err != nil {
-		return "", err
-	}
-	defer resp.Body.Close()
-
-	ip, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return "", err
-	}
-
-	return string(ip), nil
-}
-
 func main() {
-	ip := os.Getenv("WEB_IP")
-	if ip == "" {
-		var err error
-		ip, err = getCurrentPublicIP()
-		if err != nil {
-			log.Fatal(err)
-		}
+	apiAuthUrl := "/api/auth"
+	WEB_REDIRECT_URL = os.Getenv("WEB_REDIRECT_URL")
+	SERVER_URL = os.Getenv("SERVER_URL")
+	if SERVER_URL == "" {
+		SERVER_URL = "http://localhost"
 	}
-
-	url := fmt.Sprintf("http://%s", ip)
+	SERVER_PORT = os.Getenv("SERVER_PORT")
+	if SERVER_PORT == "" {
+		SERVER_PORT = "8080"
+	}
+	url := fmt.Sprintf("%s:%s", SERVER_URL, SERVER_PORT)
 
 	googleOauthConfig, _ = GetGoogleOauthConfig(&OauthConfigParams{
 		RedirectURL:  url + "/callback/google",
@@ -60,17 +49,19 @@ func main() {
 		ClientID:     os.Getenv("LINE_CLIENT_ID"),
 		ClientSecret: os.Getenv("LINE_CLIENT_SECRET"),
 	})
-	http.HandleFunc("/login/google", handleGoogleLogin)
-	http.HandleFunc("/callback/google", handleGoogleCallback)
-	http.HandleFunc("/login/facebook", handleFacebookLogin)
-	http.HandleFunc("/callback/facebook", handleFacebookCallback)
-	http.HandleFunc("/login/line", handleLineLogin)
-	http.HandleFunc("/callback/line", handleLineCallback)
-	port := os.Getenv("PORT")
-	if port == "" {
-		port = "8080"
-	}
-	log.Fatal(http.ListenAndServe(fmt.Sprintf(":%s", port), nil))
+
+	loginUrl := fmt.Sprintf("%s/login", apiAuthUrl)
+	http.HandleFunc(fmt.Sprintf("%s/google", loginUrl), handleGoogleLogin)
+	http.HandleFunc(fmt.Sprintf("%s/facebook", loginUrl), handleFacebookLogin)
+	http.HandleFunc(fmt.Sprintf("%s/line", loginUrl), handleLineLogin)
+
+	callbackUrl := fmt.Sprintf("%s/callback", apiAuthUrl)
+	http.HandleFunc(fmt.Sprintf("%s/google", callbackUrl), handleGoogleCallback)
+	http.HandleFunc(fmt.Sprintf("%s/facebook", callbackUrl), handleFacebookCallback)
+	http.HandleFunc(fmt.Sprintf("%s/line", callbackUrl), handleLineCallback)
+
+	log.Fatal(http.ListenAndServe(fmt.Sprintf(":%s", SERVER_PORT), nil))
+	fmt.Printf("Server is listening at %s:%s\n", SERVER_URL, SERVER_PORT)
 }
 
 func handleGoogleLogin(w http.ResponseWriter, r *http.Request) {
@@ -92,14 +83,11 @@ func handleGoogleCallback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	userInfo, err := GetGoogleUserInfo(ctx, token)
-	if err != nil {
-		http.Error(w, fmt.Sprintf("failed to get user info: %v", err), http.StatusInternalServerError)
-		return
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(userInfo)
+	http.SetCookie(w, &http.Cookie{
+		Name:  "token",
+		Value: token.AccessToken,
+	})
+	http.Redirect(w, r, WEB_REDIRECT_URL, http.StatusTemporaryRedirect)
 }
 
 func GetGoogleUserInfo(ctx context.Context, token *oauth2.Token) (*UserInfo, error) {
@@ -150,14 +138,11 @@ func handleFacebookCallback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	userInfo, err := GetFacebookUserInfo(ctx, token)
-	if err != nil {
-		http.Error(w, fmt.Sprintf("failed to get user info: %v", err), http.StatusInternalServerError)
-		return
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(userInfo)
+	http.SetCookie(w, &http.Cookie{
+		Name:  "token",
+		Value: token.AccessToken,
+	})
+	http.Redirect(w, r, WEB_REDIRECT_URL, http.StatusTemporaryRedirect)
 }
 
 func GetFacebookUserInfo(ctx context.Context, token *oauth2.Token) (*UserInfo, error) {
@@ -214,14 +199,11 @@ func handleLineCallback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	userInfo, err := GetLineUserInfo(ctx, token)
-	if err != nil {
-		http.Error(w, fmt.Sprintf("failed to get user info: %v", err), http.StatusInternalServerError)
-		return
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(userInfo)
+	http.SetCookie(w, &http.Cookie{
+		Name:  "token",
+		Value: token.AccessToken,
+	})
+	http.Redirect(w, r, WEB_REDIRECT_URL, http.StatusTemporaryRedirect)
 }
 
 func GetLineUserInfo(ctx context.Context, token *oauth2.Token) (*UserInfo, error) {
