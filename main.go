@@ -18,33 +18,6 @@ var (
 	lineOauthConfig     *oauth2.Config
 )
 
-func init() {
-	ip, err := getCurrentPublicIP()
-	if err != nil {
-		log.Fatal(err)
-	}
-	port := os.Getenv("PORT")
-	if port == "" {
-		port = "8080"
-	}
-	url := fmt.Sprintf("http://%s:%s", ip, port)
-
-	googleOauthConfig, _ = GetGoogleOauthConfig(&OauthConfigParams{
-		RedirectURL:  url + "/callback/google",
-		ClientID:     os.Getenv("GOOGLE_CLIENT_ID"),
-		ClientSecret: os.Getenv("GOOGLE_CLIENT_SECRET"),
-	})
-	facebookOauthConfig, _ = GetFacebookOauthConfig(&OauthConfigParams{
-		RedirectURL:  url + "/callback/facebook",
-		ClientID:     os.Getenv("FACEBOOK_CLIENT_ID"),
-		ClientSecret: os.Getenv("FACEBOOK_CLIENT_SECRET"),
-	})
-	lineOauthConfig, _ = GetLineOauthConfig(&OauthConfigParams{
-		RedirectURL:  url + "/callback/line",
-		ClientID:     os.Getenv("LINE_CLIENT_ID"),
-		ClientSecret: os.Getenv("LINE_CLIENT_SECRET"),
-	})
-}
 func getCurrentPublicIP() (string, error) {
 	resp, err := http.Get("https://api.ipify.org?format=text")
 	if err != nil {
@@ -61,13 +34,43 @@ func getCurrentPublicIP() (string, error) {
 }
 
 func main() {
+	ip := os.Getenv("WEB_IP")
+	if ip == "" {
+		var err error
+		ip, err = getCurrentPublicIP()
+		if err != nil {
+			log.Fatal(err)
+		}
+	}
+
+	url := fmt.Sprintf("http://%s", ip)
+
+	googleOauthConfig, _ = GetGoogleOauthConfig(&OauthConfigParams{
+		RedirectURL:  url + "/callback/google",
+		ClientID:     os.Getenv("GOOGLE_CLIENT_ID"),
+		ClientSecret: os.Getenv("GOOGLE_CLIENT_SECRET"),
+	})
+	facebookOauthConfig, _ = GetFacebookOauthConfig(&OauthConfigParams{
+		RedirectURL:  url + "/callback/facebook",
+		ClientID:     os.Getenv("FACEBOOK_CLIENT_ID"),
+		ClientSecret: os.Getenv("FACEBOOK_CLIENT_SECRET"),
+	})
+	lineOauthConfig, _ = GetLineOauthConfig(&OauthConfigParams{
+		RedirectURL:  url + "/callback/line",
+		ClientID:     os.Getenv("LINE_CLIENT_ID"),
+		ClientSecret: os.Getenv("LINE_CLIENT_SECRET"),
+	})
 	http.HandleFunc("/login/google", handleGoogleLogin)
 	http.HandleFunc("/callback/google", handleGoogleCallback)
 	http.HandleFunc("/login/facebook", handleFacebookLogin)
 	http.HandleFunc("/callback/facebook", handleFacebookCallback)
 	http.HandleFunc("/login/line", handleLineLogin)
 	http.HandleFunc("/callback/line", handleLineCallback)
-	log.Fatal(http.ListenAndServe(":8080", nil))
+	port := os.Getenv("PORT")
+	if port == "" {
+		port = "8080"
+	}
+	log.Fatal(http.ListenAndServe(fmt.Sprintf(":%s", port), nil))
 }
 
 func handleGoogleLogin(w http.ResponseWriter, r *http.Request) {
