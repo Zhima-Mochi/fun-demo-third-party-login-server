@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -24,6 +25,9 @@ var (
 func main() {
 	apiAuthUrl := "/api/auth"
 	WEB_REDIRECT_URL = os.Getenv("WEB_REDIRECT_URL")
+	if WEB_REDIRECT_URL == "" {
+		WEB_REDIRECT_URL = "http://localhost:3000"
+	}
 	SERVER_URL = os.Getenv("SERVER_URL")
 	if SERVER_URL == "" {
 		SERVER_URL = "http://localhost"
@@ -60,12 +64,36 @@ func main() {
 	http.HandleFunc(fmt.Sprintf("%s/facebook", callbackUrl), handleFacebookCallback)
 	http.HandleFunc(fmt.Sprintf("%s/line", callbackUrl), handleLineCallback)
 
-	log.Fatal(http.ListenAndServe(fmt.Sprintf(":%s", SERVER_PORT), nil))
 	fmt.Printf("Server is listening at %s:%s\n", SERVER_URL, SERVER_PORT)
+	log.Fatal(http.ListenAndServe(fmt.Sprintf(":%s", SERVER_PORT), nil))
+}
+
+func getState(r *http.Request) string {
+	redirectPath := r.URL.Query().Get("redirect")
+	if redirectPath == "" {
+		redirectPath = "/"
+	}
+
+	state := base64.URLEncoding.EncodeToString([]byte(redirectPath))
+
+	return state
+}
+
+func getRedirectPATH(r *http.Request) string {
+	state := r.URL.Query().Get("state")
+
+	redirectPath, err := base64.URLEncoding.DecodeString(state)
+	if err != nil {
+		log.Printf("failed to decode state: %v", err)
+		return "/"
+	}
+
+	return string(redirectPath)
 }
 
 func handleGoogleLogin(w http.ResponseWriter, r *http.Request) {
-	url := googleOauthConfig.AuthCodeURL("state", oauth2.AccessTypeOffline)
+	state := getState(r)
+	url := googleOauthConfig.AuthCodeURL(state, oauth2.AccessTypeOffline)
 	http.Redirect(w, r, url, http.StatusTemporaryRedirect)
 }
 
@@ -87,7 +115,9 @@ func handleGoogleCallback(w http.ResponseWriter, r *http.Request) {
 		Name:  "token",
 		Value: token.AccessToken,
 	})
-	http.Redirect(w, r, WEB_REDIRECT_URL, http.StatusTemporaryRedirect)
+
+	redirectURL := WEB_REDIRECT_URL + getRedirectPATH(r)
+	http.Redirect(w, r, redirectURL, http.StatusTemporaryRedirect)
 }
 
 func GetGoogleUserInfo(ctx context.Context, token *oauth2.Token) (*UserInfo, error) {
@@ -120,7 +150,8 @@ func GetGoogleUserInfo(ctx context.Context, token *oauth2.Token) (*UserInfo, err
 }
 
 func handleFacebookLogin(w http.ResponseWriter, r *http.Request) {
-	url := facebookOauthConfig.AuthCodeURL("state", oauth2.AccessTypeOffline)
+	state := getState(r)
+	url := facebookOauthConfig.AuthCodeURL(state, oauth2.AccessTypeOffline)
 	http.Redirect(w, r, url, http.StatusTemporaryRedirect)
 }
 
@@ -142,7 +173,9 @@ func handleFacebookCallback(w http.ResponseWriter, r *http.Request) {
 		Name:  "token",
 		Value: token.AccessToken,
 	})
-	http.Redirect(w, r, WEB_REDIRECT_URL, http.StatusTemporaryRedirect)
+
+	redirect_url := WEB_REDIRECT_URL + getRedirectPATH(r)
+	http.Redirect(w, r, redirect_url, http.StatusTemporaryRedirect)
 }
 
 func GetFacebookUserInfo(ctx context.Context, token *oauth2.Token) (*UserInfo, error) {
@@ -181,7 +214,8 @@ func GetFacebookUserInfo(ctx context.Context, token *oauth2.Token) (*UserInfo, e
 }
 
 func handleLineLogin(w http.ResponseWriter, r *http.Request) {
-	url := lineOauthConfig.AuthCodeURL("state", oauth2.AccessTypeOffline)
+	state := getState(r)
+	url := lineOauthConfig.AuthCodeURL(state, oauth2.AccessTypeOffline)
 	http.Redirect(w, r, url, http.StatusTemporaryRedirect)
 }
 
@@ -203,7 +237,9 @@ func handleLineCallback(w http.ResponseWriter, r *http.Request) {
 		Name:  "token",
 		Value: token.AccessToken,
 	})
-	http.Redirect(w, r, WEB_REDIRECT_URL, http.StatusTemporaryRedirect)
+
+	redirectURL := WEB_REDIRECT_URL + getRedirectPATH(r)
+	http.Redirect(w, r, redirectURL, http.StatusTemporaryRedirect)
 }
 
 func GetLineUserInfo(ctx context.Context, token *oauth2.Token) (*UserInfo, error) {
